@@ -1,19 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-  Coins,
-  Plus,
-  Layers,
-  Images,
-  Rocket,
-  FileClock,
-  Wallet,
-  Loader2,
-  ExternalLink,
-} from "lucide-react";
+import { Plus, Layers, Images, Rocket, FileClock, Wallet } from "lucide-react";
 import { toast } from "sonner";
-import { formatEther, type Address } from "viem";
-import { useAccount, useChainId, useDeployContract, usePublicClient } from "wagmi";
+import { useAccount } from "wagmi";
 import { SiteHeader, ConnectWallet } from "@/components/site-header";
 import { NftCanvas } from "@/components/nft-canvas";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { actions, useAppState, useMounted } from "@/lib/store";
-import { RASHITO_TOKEN_ABI, RASHITO_TOKEN_BYTECODE } from "@/lib/web3/token-artifact";
 import { CHAINS, STEPS, type ChainId } from "@/lib/types";
 
 export const Route = createFileRoute("/dashboard")({
@@ -166,84 +154,6 @@ function NewProjectDialog() {
   );
 }
 
-function DeployTokenCard() {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const publicClient = usePublicClient();
-  const { deployContractAsync } = useDeployContract();
-  const [busy, setBusy] = useState(false);
-  const [deployed, setDeployed] = useState<{ address: Address; explorer?: string } | null>(null);
-
-  const deploy = async () => {
-    if (!isConnected || !address) {
-      toast.error("Connect a wallet to deploy");
-      return;
-    }
-    try {
-      setBusy(true);
-      const hash = await deployContractAsync({
-        abi: RASHITO_TOKEN_ABI,
-        bytecode: RASHITO_TOKEN_BYTECODE,
-        args: [address, address],
-      });
-      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-      if (!receipt.contractAddress) throw new Error("No contract address returned");
-      setDeployed({ address: receipt.contractAddress });
-      toast.success(
-        `RASH token deployed — ${formatEther(1_000_000_000n * 10n ** 18n)} RASH minted to your wallet`,
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Deployment failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Coins className="size-4" /> RASH Token
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm text-muted-foreground">
-        <p>
-          Deploys the fixed-supply RASH ERC-20 (1,000,000,000 tokens, minted once to your wallet as
-          treasury) from your connected wallet, on whichever network it's currently set to (chain id{" "}
-          {chainId}).
-        </p>
-        {deployed ? (
-          <div className="space-y-2 rounded-lg border border-border p-3 text-xs">
-            <div className="text-muted-foreground">Deployed to</div>
-            <code className="break-all font-mono">{deployed.address}</code>
-            <p className="text-muted-foreground">
-              Add this address to <code className="font-mono">src/lib/official-token.ts</code> so
-              the Tokenomics page can read live supply data.
-            </p>
-            <Button asChild variant="secondary" size="sm" className="w-full">
-              <a
-                href={`https://etherscan.io/address/${deployed.address}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink /> View on block explorer
-              </a>
-            </Button>
-          </div>
-        ) : busy ? (
-          <p className="flex items-center gap-2 font-mono text-xs">
-            <Loader2 className="size-3 animate-spin" /> Confirm in your wallet…
-          </p>
-        ) : (
-          <Button size="sm" onClick={deploy}>
-            Deploy RASH Token
-          </Button>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 function Stat({
   icon: Icon,
   label,
@@ -321,15 +231,6 @@ function Dashboard() {
           <Stat icon={Images} label="NFTs generated" value={generated} />
           <Stat icon={Rocket} label="Collections deployed" value={deployed} />
           <Stat icon={FileClock} label="Draft projects" value={drafts} />
-        </div>
-
-        <h2 className="mt-12 text-xl font-semibold">RASH Token</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Owner-only setup for the platform's utility token. Visible to any wallet, but meant for
-          whoever runs this deployment.
-        </p>
-        <div className="mt-4 grid gap-5 sm:grid-cols-2">
-          <DeployTokenCard />
         </div>
 
         <h2 className="mt-12 text-xl font-semibold">Recently created</h2>

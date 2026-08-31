@@ -6,9 +6,11 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Copy,
   Dice5,
   Download,
   Eye,
+  Gift,
   ImagePlus,
   Layers as LayersIcon,
   Loader2,
@@ -52,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   actions,
@@ -1863,6 +1866,7 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
   const { writeContractAsync } = useWriteContract();
 
   const [qty, setQty] = useState(1);
+  const [reserveQty, setReserveQty] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
   const d = project.deployment;
   const contractAddress = d?.address as Address | undefined;
@@ -1889,11 +1893,31 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
     chainId: targetChain.id,
     query: { enabled: !!contractAddress },
   });
+  const { data: contractOwner } = useReadContract({
+    address: contractAddress,
+    abi: RASHITO_COLLECTION_ABI,
+    functionName: "owner",
+    chainId: targetChain.id,
+    query: { enabled: !!contractAddress },
+  });
 
   const total = project.size;
   const minted = totalSupply !== undefined ? Number(totalSupply) : project.minted;
   const remaining = Math.max(0, total - minted);
   const priceWei = onChainPrice ?? (d ? parseEther(d.mintPrice) : 0n);
+  const isOwner =
+    !!address && !!contractOwner && address.toLowerCase() === contractOwner.toLowerCase();
+  const mintLink =
+    contractAddress && typeof window !== "undefined"
+      ? `${window.location.origin}/mint/${project.chain}/${contractAddress}`
+      : "";
+
+  const ensureRightNetwork = async () => {
+    if (activeChainId !== targetChain.id) {
+      setBusy("Switching network…");
+      await switchChainAsync({ chainId: targetChain.id });
+    }
+  };
 
   const mint = async () => {
     if (!d || !contractAddress) {
@@ -1910,10 +1934,7 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
     }
     if (qty < 1) return;
     try {
-      if (activeChainId !== targetChain.id) {
-        setBusy("Switching network…");
-        await switchChainAsync({ chainId: targetChain.id });
-      }
+      await ensureRightNetwork();
       setBusy("Confirm the mint transaction in your wallet…");
       const hash = await writeContractAsync({
         address: contractAddress,
@@ -1931,6 +1952,45 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
     } catch (err) {
       console.error(err);
       toast.error(err instanceof Error ? err.message : "Mint failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const reserveMint = async () => {
+    if (!d || !contractAddress) {
+      toast.error("Deploy the contract first");
+      return;
+    }
+    if (!isConnected || !address) {
+      toast.error("Connect your wallet to mint");
+      return;
+    }
+    if (!isOwner) {
+      toast.error("Only the contract owner can use reserve mint");
+      return;
+    }
+    if (reserveQty < 1) return;
+    try {
+      await ensureRightNetwork();
+      setBusy("Confirm the free reserve mint in your wallet…");
+      const hash = await writeContractAsync({
+        address: contractAddress,
+        abi: RASHITO_COLLECTION_ABI,
+        functionName: "ownerMint",
+        args: [address, BigInt(reserveQty)],
+        chainId: targetChain.id,
+      });
+      setBusy("Waiting for confirmation…");
+      await publicClient!.waitForTransactionReceipt({ hash });
+      const fresh = await refetchSupply();
+      update((p) => ({ minted: Number(fresh.data ?? p.minted + reserveQty) }));
+      toast.success(
+        `Reserved ${reserveQty} NFT${reserveQty > 1 ? "s" : ""} to your wallet, free of charge`,
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Reserve mint failed");
     } finally {
       setBusy(null);
     }
@@ -1972,66 +2032,137 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
               </span>
             </div>
             <Progress value={(minted / Math.max(1, total)) * 100} />
-            <div className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-              <span>
-                Public mint is {publicMintOn ? "open" : "closed"} ·{" "}
-                {d ? formatEther(priceWei) : "0"}{" "}
-                {CHAINS.find((c) => c.id === project.chain)!.symbol} / token
-              </span>
-              <Switch
-                checked={!!publicMintOn}
-                onCheckedChange={togglePublicMint}
-                disabled={!contractAddress || !!busy}
-              />
-            </div>
-            {!isConnected ? (
-              <ConnectWallet full />
-            ) : busy ? (
-              <p className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> {busy}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={remaining}
-                    value={qty}
-                    onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
+
+            <Tabs defaultValue="public">
+              <TabsList className="w-full">
+                <TabsTrigger value="public" className="flex-1">
+                  Public Sale
+                </TabsTrigger>
+                <TabsTrigger value="reserve" className="flex-1">
+                  Reserve to My Wallet
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="public" className="mt-4 space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+                  <span>
+                    Public mint is {publicMintOn ? "open" : "closed"} ·{" "}
+                    {d ? formatEther(priceWei) : "0"}{" "}
+                    {CHAINS.find((c) => c.id === project.chain)!.symbol} / token
+                  </span>
+                  <Switch
+                    checked={!!publicMintOn}
+                    onCheckedChange={togglePublicMint}
+                    disabled={!contractAddress || !!busy}
                   />
-                  <Button onClick={mint} disabled={!publicMintOn || remaining <= 0}>
-                    <Rocket /> Mint {qty}
-                  </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Total: {d ? formatEther(priceWei * BigInt(qty)) : "0"}{" "}
-                  {CHAINS.find((c) => c.id === project.chain)!.symbol} + gas. Each click submits a
-                  real transaction, signed by your wallet.
+                  Anyone with a wallet can mint at this price once open - including through your
+                  shareable mint link below. You collect the ETH as they mint.
                 </p>
-              </div>
-            )}
+                {!isConnected ? (
+                  <ConnectWallet full />
+                ) : busy ? (
+                  <p className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" /> {busy}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={remaining}
+                        value={qty}
+                        onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
+                      />
+                      <Button onClick={mint} disabled={!publicMintOn || remaining <= 0}>
+                        <Rocket /> Mint {qty}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Total: {d ? formatEther(priceWei * BigInt(qty)) : "0"}{" "}
+                      {CHAINS.find((c) => c.id === project.chain)!.symbol} + gas. Each click submits
+                      a real transaction, signed by your wallet.
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="reserve" className="mt-4 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Mint straight to your own wallet for free - you only pay gas, no mint price. Use
+                  this if you'd rather hold the collection yourself and list individual pieces on
+                  OpenSea, Blur, or anywhere else at your own price. Owner-only.
+                </p>
+                {!isConnected ? (
+                  <ConnectWallet full />
+                ) : !isOwner ? (
+                  <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+                    Connected wallet isn't the contract owner, so reserve mint isn't available here.
+                  </p>
+                ) : busy ? (
+                  <p className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" /> {busy}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={remaining}
+                        value={reserveQty}
+                        onChange={(e) => setReserveQty(Math.max(1, Number(e.target.value)))}
+                      />
+                      <Button onClick={reserveMint} disabled={remaining <= 0} variant="secondary">
+                        <Gift /> Reserve {reserveQty} (Free)
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Total: 0 {CHAINS.find((c) => c.id === project.chain)!.symbol} + gas only.
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">What's next</CardTitle>
+            <CardTitle className="text-base">Share with your community</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="text-muted-foreground">
-              Your collection is live on {CHAINS.find((c) => c.id === project.chain)!.name}. Manage
-              supply and mint settings from the collection dashboard, or share your public page from
-              the explorer.
+              Your collection is live on {CHAINS.find((c) => c.id === project.chain)!.name}. Share
+              this link so anyone can mint directly - it works for any visitor, on any device, with
+              no Rashito account needed.
             </p>
+            {mintLink ? (
+              <div className="space-y-2">
+                <div className="rounded-lg border border-border p-3">
+                  <code className="break-all font-mono text-xs text-muted-foreground">
+                    {mintLink}
+                  </code>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(mintLink);
+                    toast.success("Mint link copied");
+                  }}
+                >
+                  <Copy /> Copy public mint link
+                </Button>
+              </div>
+            ) : null}
             <Button
               className="w-full"
+              variant="secondary"
               onClick={() => navigate({ to: "/collection/$id", params: { id: project.id } })}
             >
               Open collection dashboard <ArrowRight />
-            </Button>
-            <Button asChild variant="secondary" className="w-full">
-              <Link to="/explore">View in explorer</Link>
             </Button>
             <Button asChild variant="ghost" className="w-full">
               <Link to="/dashboard">Back to my projects</Link>

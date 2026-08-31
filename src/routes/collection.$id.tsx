@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ExternalLink, Pause, Play, Wallet2 } from "lucide-react";
+import { Copy, ExternalLink, Pause, Play, Wallet2 } from "lucide-react";
 import { toast } from "sonner";
 import { type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
@@ -182,6 +182,16 @@ function CollectionPage() {
                   >
                     <ExternalLink /> Block explorer
                   </a>
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const link = `${window.location.origin}/mint/${p.chain}/${d.address}`;
+                    void navigator.clipboard?.writeText(link);
+                    toast.success("Public mint link copied");
+                  }}
+                >
+                  <Copy /> Copy public mint link
                 </Button>
                 {isOwner ? (
                   <>

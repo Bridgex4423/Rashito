@@ -16,6 +16,7 @@ import { Route as TokenomicsRouteImport } from './routes/tokenomics'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as CollectionIdRouteImport } from './routes/collection.$id'
 import { Route as StudioIdRouteImport } from './routes/studio.$id'
+import { Route as MintChainAddressRouteImport } from './routes/mint.$chain.$address'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +53,11 @@ const StudioIdRoute = StudioIdRouteImport.update({
   path: '/studio/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MintChainAddressRoute = MintChainAddressRouteImport.update({
+  id: '/mint/$chain/$address',
+  path: '/mint/$chain/$address',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
   '/studio/$id': typeof StudioIdRoute
+  '/mint/$chain/$address': typeof MintChainAddressRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
   '/studio/$id': typeof StudioIdRoute
+  '/mint/$chain/$address': typeof MintChainAddressRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +88,7 @@ export interface FileRoutesById {
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
   '/studio/$id': typeof StudioIdRoute
+  '/mint/$chain/$address': typeof MintChainAddressRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/whitepaper'
     | '/collection/$id'
     | '/studio/$id'
+    | '/mint/$chain/$address'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/whitepaper'
     | '/collection/$id'
     | '/studio/$id'
+    | '/mint/$chain/$address'
   id:
     | '__root__'
     | '/'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/whitepaper'
     | '/collection/$id'
     | '/studio/$id'
+    | '/mint/$chain/$address'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +131,7 @@ export interface RootRouteChildren {
   WhitepaperRoute: typeof WhitepaperRoute
   CollectionIdRoute: typeof CollectionIdRoute
   StudioIdRoute: typeof StudioIdRoute
+  MintChainAddressRoute: typeof MintChainAddressRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudioIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mint/$chain/$address': {
+      id: '/mint/$chain/$address'
+      path: '/mint/$chain/$address'
+      fullPath: '/mint/$chain/$address'
+      preLoaderRoute: typeof MintChainAddressRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -183,6 +203,7 @@ const rootRouteChildren: RootRouteChildren = {
   WhitepaperRoute: WhitepaperRoute,
   CollectionIdRoute: CollectionIdRoute,
   StudioIdRoute: StudioIdRoute,
+  MintChainAddressRoute: MintChainAddressRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
