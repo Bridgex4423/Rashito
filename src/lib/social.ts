@@ -5,9 +5,9 @@
  * leave a value empty to hide that icon everywhere it's used.
  */
 export const SOCIAL_LINKS = {
-  x: "https://x.com/rashito_xyz",
+  x: "https://x.com/Rashitofficial",
   discord: "https://discord.gg/rashito",
-  telegram: "https://t.me/rashito",
+  telegram: "https://t.me/Rashito_channel",
   github: "https://github.com/rashito",
 } as const;
 

@@ -18,9 +18,9 @@ export interface Partner {
 
 export const PARTNERS: Partner[] = [
   {
-    name: "IQ.wiki",
-    logo: "/partners/iqwiki-logo.svg",
-    href: "https://iq.wiki/wiki/rashito",
-    alt: "IQ.wiki logo",
+    name: "Cyper Chat",
+    logo: "/partners/cyperchat-logo.png",
+    href: "https://cyperchat.net/",
+    alt: "Cyper Chat logo",
   },
 ];

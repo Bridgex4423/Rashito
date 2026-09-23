@@ -38,6 +38,19 @@ export function SiteFooter() {
         </div>
         <span>© {new Date().getFullYear()} Rashito</span>
       </div>
+      <div className="border-t border-border/40">
+        <div className="mx-auto flex max-w-7xl items-center justify-center px-4 py-4 text-xs text-muted-foreground">
+          <a
+            href="https://iq.wiki/wiki/rashito"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 hover:text-foreground"
+          >
+            <img src="/partners/iqwiki-logo.svg" alt="IQ.wiki logo" className="h-4 w-auto" />
+            Featured on IQ.wiki
+          </a>
+        </div>
+      </div>
     </footer>
   );
 }
