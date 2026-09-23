@@ -27,29 +27,37 @@ deploys.
 
 - **Wallet connection** - MetaMask/injected, Coinbase Wallet, WalletConnect
   (if configured), via `wagmi`. No mock addresses.
-- **Contract deployment** - deploys the compiled `RashitoCollection` or
-  `RashitoToken` bytecode directly from your connected wallet (`viem`'s
-  `deployContract`). You sign, you pay gas, on whatever chain you pick
-  (Sepolia, Base Sepolia, Base, Polygon, BNB Chain, or Ethereum mainnet).
+- **Contract deployment** - deploys the compiled `RashitoCollection`,
+  `RashitoToken`, or `RashitoStaking` bytecode directly from your connected
+  wallet (`viem`'s `deployContract`). You sign, you pay gas, on whatever
+  chain you pick (Sepolia, Base Sepolia, Base, Polygon, BNB Chain, or
+  Ethereum mainnet).
 - **Minting** - calls the deployed collection contract's real `mint()` function.
+- **Staking** - `/staking` lets holders stake NFTs from Rashito's official
+  collection for real RASH rewards, paid from a pool the owner funds.
 - **IPFS pinning** - real, via Pinata, once you add a `PINATA_JWT` (see
   below). Without a key the Upload step falls back to a clearly-labeled
   simulated CID so you can still click through the flow.
 
-See `contracts/README.md` for both Solidity contracts, their test suite, and
-how to compile/verify them with Hardhat.
+See `contracts/README.md` for all three Solidity contracts, their test
+suite, and how to compile/verify them with Hardhat.
 
-## Deploying your own collection and the RASH token
+## Deploying your own collection, the RASH token, and staking
 
 1. Connect your wallet, go to `/dashboard`, and create a project to design
    your own NFT collection through the Studio wizard (layers, traits, rarity,
    generate, upload, deploy, mint).
-2. Under **"RASH Token"** on the Dashboard, click **"Deploy RASH Token"** to
-   deploy the fixed-supply ERC-20 straight to your wallet as treasury.
-3. Update `src/lib/official-token.ts` with the deployed token address so
-   `/tokenomics` can read live supply data.
-4. Update `src/lib/social.ts` with your real X/Discord/Telegram/GitHub links.
-5. Regenerate `public/whitepaper.pdf` if you edit the whitepaper content
+2. Deploy the RASH token via the Hardhat CLI (see `contracts/README.md`) -
+   there's no in-app button for this by design, since minting the full fixed
+   supply is a one-time, high-stakes action best done deliberately.
+3. Deploy `RashitoStaking.sol` via the Hardhat CLI, pointed at your NFT
+   collection and RASH token addresses, then fund its reward pool.
+4. Update `src/lib/official-collection.ts`, `src/lib/official-token.ts`, and
+   `src/lib/official-staking.ts` with the deployed addresses so
+   `/tokenomics` and `/staking` go live with real on-chain data for every
+   visitor.
+5. Update `src/lib/social.ts` with your real X/Discord/Telegram/GitHub links.
+6. Regenerate `public/whitepaper.pdf` if you edit the whitepaper content
    (`python3 scripts/generate_whitepaper_pdf.py` - requires `reportlab`:
    `pip install reportlab`).
 
@@ -77,13 +85,15 @@ how to compile/verify them with Hardhat.
 ## Project structure
 
 ```
-src/routes/          Pages (index, dashboard, studio/$id, collection/$id, explore, tokenomics, whitepaper)
+src/routes/          Pages (index, dashboard, studio/$id, collection/$id, explore, staking, tokenomics, whitepaper)
 src/components/      UI + site-header/site-footer (wallet connect, mobile nav, socials)
 src/lib/             Generator, store (localStorage), IPFS server functions
 src/lib/web3/        wagmi config, compiled contract artifacts, deploy helpers
 src/lib/social.ts             Rashito's own social links
-src/lib/official-token.ts     Deployed RASH token address (fill in after deploy)
-contracts/           RashitoCollection.sol, RashitoToken.sol
+src/lib/official-collection.ts   Deployed official NFT collection address (fill in after deploy)
+src/lib/official-token.ts        Deployed RASH token address (fill in after deploy)
+src/lib/official-staking.ts      Deployed staking contract address (fill in after deploy)
+contracts/           RashitoCollection.sol, RashitoToken.sol, RashitoStaking.sol
 scripts/             Whitepaper PDF generator
 test/                Hardhat contract tests
 ignition/modules/    Hardhat Ignition deploy modules

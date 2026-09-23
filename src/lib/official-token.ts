@@ -3,7 +3,7 @@ import type { ChainId } from "@/lib/types";
 /**
  * The deployed RASH token contract, read by the /tokenomics page once you've
  * deployed it. Starts empty - see contracts/README.md ("RASH Token") for the
- * deploy flow, or use the "Deploy RASH Token" button on /dashboard.
+ * Hardhat deploy flow.
  */
 export const OFFICIAL_TOKEN: { address: `0x${string}` | ""; chain: ChainId } = {
   address: "",

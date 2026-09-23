@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ExploreRouteImport } from './routes/explore'
+import { Route as StakingRouteImport } from './routes/staking'
 import { Route as TokenomicsRouteImport } from './routes/tokenomics'
 import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as CollectionIdRouteImport } from './routes/collection.$id'
@@ -31,6 +32,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const ExploreRoute = ExploreRouteImport.update({
   id: '/explore',
   path: '/explore',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StakingRoute = StakingRouteImport.update({
+  id: '/staking',
+  path: '/staking',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TokenomicsRoute = TokenomicsRouteImport.update({
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/staking': typeof StakingRoute
   '/tokenomics': typeof TokenomicsRoute
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
@@ -73,6 +80,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/staking': typeof StakingRoute
   '/tokenomics': typeof TokenomicsRoute
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
@@ -84,6 +92,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/explore': typeof ExploreRoute
+  '/staking': typeof StakingRoute
   '/tokenomics': typeof TokenomicsRoute
   '/whitepaper': typeof WhitepaperRoute
   '/collection/$id': typeof CollectionIdRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/explore'
+    | '/staking'
     | '/tokenomics'
     | '/whitepaper'
     | '/collection/$id'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/explore'
+    | '/staking'
     | '/tokenomics'
     | '/whitepaper'
     | '/collection/$id'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/explore'
+    | '/staking'
     | '/tokenomics'
     | '/whitepaper'
     | '/collection/$id'
@@ -127,6 +139,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
   ExploreRoute: typeof ExploreRoute
+  StakingRoute: typeof StakingRoute
   TokenomicsRoute: typeof TokenomicsRoute
   WhitepaperRoute: typeof WhitepaperRoute
   CollectionIdRoute: typeof CollectionIdRoute
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/explore'
       fullPath: '/explore'
       preLoaderRoute: typeof ExploreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staking': {
+      id: '/staking'
+      path: '/staking'
+      fullPath: '/staking'
+      preLoaderRoute: typeof StakingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tokenomics': {
@@ -199,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
   ExploreRoute: ExploreRoute,
+  StakingRoute: StakingRoute,
   TokenomicsRoute: TokenomicsRoute,
   WhitepaperRoute: WhitepaperRoute,
   CollectionIdRoute: CollectionIdRoute,

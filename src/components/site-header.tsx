@@ -30,6 +30,7 @@ import { shortAddress, useMounted } from "@/lib/store";
 export const NAV_LINKS = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/explore", label: "Explore" },
+  { to: "/staking", label: "Staking" },
   { to: "/tokenomics", label: "Tokenomics" },
   { to: "/whitepaper", label: "Whitepaper" },
 ] as const;

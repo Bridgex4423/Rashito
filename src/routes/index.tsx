@@ -15,6 +15,7 @@ import {
 import heroImg from "@/assets/hero.jpg";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { PartnerMarquee } from "@/components/partner-marquee";
 import {
   Accordion,
   AccordionContent,
@@ -255,6 +256,11 @@ function Landing() {
             </AccordionItem>
           ))}
         </Accordion>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-16">
+        <p className="mb-6 text-center text-sm text-muted-foreground">Our Partners</p>
+        <PartnerMarquee />
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-20">
