@@ -20,24 +20,108 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-function persist() {
+// Projects with many/large images do not fit in localStorage (~5 MB). When that
+// happens the full state is kept in IndexedDB instead, which allows far more.
+const IDB_NAME = "rashito";
+const IDB_STORE = "kv";
+
+function idbOpen(): Promise<IDBDatabase> {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+async function idbSet(value: string | null) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    const db = await idbOpen();
+    await new Promise<void>((res, rej) => {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      if (value === null) tx.objectStore(IDB_STORE).delete(KEY);
+      else tx.objectStore(IDB_STORE).put(value, KEY);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
   } catch {
-    /* quota */
+    /* IndexedDB unavailable */
+  }
+}
+
+async function idbGet(): Promise<string | null> {
+  try {
+    const db = await idbOpen();
+    return await new Promise<string | null>((res, rej) => {
+      const req = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(KEY);
+      req.onsuccess = () => {
+        db.close();
+        res((req.result as string | undefined) ?? null);
+      };
+      req.onerror = () => rej(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+let ready = false;
+
+function persist() {
+  const json = JSON.stringify(state);
+  try {
+    localStorage.setItem(KEY, json);
+    void idbSet(null);
+  } catch {
+    // quota exceeded: drop the stale small copy and keep the full state in IndexedDB
+    try {
+      localStorage.removeItem(KEY);
+    } catch {
+      /* ignore */
+    }
+    void idbSet(json);
   }
 }
 
 export function hydrate() {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) state = { ...empty, ...(JSON.parse(raw) as AppState) };
+    raw = localStorage.getItem(KEY);
   } catch {
     /* ignore */
   }
-  emit();
+  if (raw) {
+    try {
+      state = { ...empty, ...(JSON.parse(raw) as AppState) };
+    } catch {
+      /* ignore */
+    }
+    ready = true;
+    emit();
+    return;
+  }
+  void idbGet().then((stored) => {
+    try {
+      if (stored) state = { ...empty, ...(JSON.parse(stored) as AppState) };
+    } catch {
+      /* ignore */
+    }
+    ready = true;
+    emit();
+  });
+}
+
+/** False until saved projects have been loaded (localStorage or IndexedDB). */
+export function useStoreReady(): boolean {
+  useEffect(() => hydrate(), []);
+  return useSyncExternalStore(
+    subscribe,
+    () => ready,
+    () => false,
+  );
 }
 
 function setState(next: AppState) {

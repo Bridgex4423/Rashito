@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TOKEN_ALLOCATION } from "@/lib/tokenomics";
 
 export const Route = createFileRoute("/tokenomics")({
   head: () => ({
@@ -22,8 +23,7 @@ export const Route = createFileRoute("/tokenomics")({
       { title: "Tokenomics — Rashito" },
       {
         name: "description",
-        content:
-          "RASH token allocation: 1,000,000,000 fixed supply, breakdown by bucket, and utility.",
+        content: "RASH token allocation: 3,000,000 fixed supply, breakdown by bucket, and utility.",
       },
       { property: "og:title", content: "Tokenomics — Rashito" },
     ],
@@ -32,45 +32,6 @@ export const Route = createFileRoute("/tokenomics")({
 });
 
 const TOKEN_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#a855f7"];
-
-const TOKEN_ALLOCATION = [
-  {
-    name: "Public / Liquidity",
-    value: 30,
-    tokens: "300,000,000",
-    note: "Initial DEX/CEX liquidity and public sale",
-  },
-  {
-    name: "Team & Advisors",
-    value: 20,
-    tokens: "200,000,000",
-    note: "12-month cliff, 24-month linear vest",
-  },
-  {
-    name: "Ecosystem & Staking Rewards",
-    value: 20,
-    tokens: "200,000,000",
-    note: "Released over time via staking contracts",
-  },
-  {
-    name: "Treasury",
-    value: 15,
-    tokens: "150,000,000",
-    note: "Protocol-owned, multisig-controlled",
-  },
-  {
-    name: "Marketing & Partnerships",
-    value: 10,
-    tokens: "100,000,000",
-    note: "Growth, integrations, co-marketing",
-  },
-  {
-    name: "Community Airdrops",
-    value: 5,
-    tokens: "50,000,000",
-    note: "Early users and supporters",
-  },
-];
 
 function DonutCard({
   title,
@@ -134,7 +95,7 @@ function TokenomicsPage() {
           How RASH's supply is allocated
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
-          RASH is a fixed-supply utility token: 1,000,000,000 tokens, minted once at deployment. The
+          RASH is a fixed-supply utility token: 3,000,000 tokens, minted once at deployment. The
           contract has no way to mint beyond that cap - see{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
             contracts/RashitoToken.sol
@@ -148,7 +109,7 @@ function TokenomicsPage() {
             icon={<Coins className="size-4" />}
             data={TOKEN_ALLOCATION}
             colors={TOKEN_COLORS}
-            centerLabel="1,000,000,000"
+            centerLabel="3,000,000"
           />
           <Card>
             <CardHeader>
@@ -156,7 +117,7 @@ function TokenomicsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
-                <b className="text-foreground">Fixed supply.</b> 1,000,000,000 RASH minted once at
+                <b className="text-foreground">Fixed supply.</b> 3,000,000 RASH minted once at
                 deployment. No mint function exists beyond that.
               </p>
               <p>

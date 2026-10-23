@@ -63,3 +63,39 @@ export const pinDirectory = createServerFn({ method: "POST" })
     const json = JSON.parse(text) as { IpfsHash: string; PinSize: number };
     return { cid: json.IpfsHash, size: json.PinSize, gateway };
   });
+
+/**
+ * Creates a short-lived Pinata signed upload URL. The browser uploads one file
+ * straight to Pinata with it, so the JWT never leaves the server and Vercel's
+ * request-size limit does not apply to the image itself.
+ */
+export const getUploadUrl = createServerFn({ method: "POST" })
+  .inputValidator((input: { filename: string; mime: string }) => {
+    if (!input?.filename) throw new Error("filename is required");
+    return input;
+  })
+  .handler(async ({ data }) => {
+    const jwt = process.env["PINATA_JWT"];
+    if (!jwt) throw new Error("PINATA_JWT is not configured for this project.");
+    const res = await fetch("https://uploads.pinata.cloud/v3/files/sign", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        network: "public",
+        expires: 300,
+        filename: data.filename.slice(0, 120),
+        allow_mime_types: ["image/*"],
+        max_file_size: 50_000_000,
+      }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.error("Pinata sign failed", res.status, text);
+      throw new Error(
+        `Could not start upload (Pinata ${res.status}). Check the Pinata key permissions.`,
+      );
+    }
+    const json = JSON.parse(text) as { data?: string };
+    if (!json.data) throw new Error("Pinata did not return an upload URL");
+    return { url: json.data };
+  });

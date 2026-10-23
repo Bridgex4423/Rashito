@@ -48,6 +48,13 @@ export const RARITY_TIERS = [
   { name: "Common", weight: 60 },
 ] as const;
 
+/** Steps for the non-layered "AI variations" mode. */
+export const IMPORT_STEPS = ["Details", "Import", "Upload", "Deploy", "Mint"] as const;
+
+export function stepsFor(p: { mode?: CreationMode | undefined }): readonly string[] {
+  return p.mode === "imported" ? IMPORT_STEPS : STEPS;
+}
+
 export interface Trait {
   id: string;
   name: string;
@@ -75,6 +82,10 @@ export interface Rule {
 export interface Nft {
   tokenId: number;
   name: string;
+  /** Imported (non-layered) collections store explicit attributes per token. */
+  attributes?: { trait_type: string; value: string }[] | undefined;
+  /** Imported collections: CID of this token's own image on IPFS. */
+  imageCid?: string | undefined;
   traits: { layerId: string; traitId: string }[];
   locked: string[]; // layer ids
   rarityScore: number;
@@ -97,8 +108,22 @@ export interface UploadInfo {
   uploadedAt: string;
 }
 
+/** Source of a non-layered ("AI variations") collection. Images are hosted on IPFS already. */
+export interface ImportedSource {
+  /** Folder CID when images were pre-hosted (advanced); empty when each token has its own imageCid. */
+  imageCid: string;
+  ext: string; // png | jpg | webp
+  gateway: string;
+  namePattern: string; // e.g. "Rashito Genesis #{id}"
+  baseAttributes: { trait_type: string; value: string }[];
+}
+
+export type CreationMode = "layered" | "imported";
+
 export interface Project {
   id: string;
+  mode?: CreationMode | undefined;
+  imported?: ImportedSource | undefined;
   name: string;
   symbol: string;
   description: string;

@@ -68,7 +68,7 @@ function WhitepaperPage() {
             collections directly from a connected wallet, without writing code or hiring a
             smart-contract engineer. Every deployment and mint is a real, wallet-signed on-chain
             transaction; Rashito never holds a private key or custodial funds. Alongside the Studio,
-            Rashito maintains RASH, a fixed-supply utility token (1,000,000,000 total supply) that
+            Rashito maintains RASH, a fixed-supply utility token (3,000,000 total supply) that
             anchors the ecosystem's tokenomics.
           </p>
         </Section>
@@ -111,15 +111,15 @@ function WhitepaperPage() {
           </p>
           <p>
             <b>RashitoToken.sol</b> — a fixed-supply ERC-20 (OpenZeppelin 5.x) that mints its entire
-            1,000,000,000 RASH supply once, at deployment, to a treasury address. There is no
-            further mint function of any kind. The token is burnable and supports gasless approvals
+            3,000,000 RASH supply once, at deployment, to a treasury address. There is no further
+            mint function of any kind. The token is burnable and supports gasless approvals
             (EIP-2612 permit).
           </p>
         </Section>
 
         <Section n="4" title="The RASH Token">
           <p>
-            RASH has a hard-capped total supply of 1,000,000,000 tokens, minted once at contract
+            RASH has a hard-capped total supply of 3,000,000 tokens, minted once at contract
             deployment. This figure can never increase - the contract has no mint function beyond
             the constructor.
           </p>

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Plus, Layers, Images, Rocket, FileClock, Wallet } from "lucide-react";
+import { Plus, Layers, Images, Rocket, FileClock, Wallet, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAccount } from "wagmi";
 import { SiteHeader, ConnectWallet } from "@/components/site-header";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { actions, useAppState, useMounted } from "@/lib/store";
-import { CHAINS, STEPS, type ChainId } from "@/lib/types";
+import { CHAINS, stepsFor, type ChainId } from "@/lib/types";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -140,6 +140,7 @@ function NewProjectDialog() {
                 description,
                 chain,
                 size,
+                mode: "layered",
               });
               setOpen(false);
               toast.success("Project created — opening Creator Studio");
@@ -233,7 +234,27 @@ function Dashboard() {
           <Stat icon={FileClock} label="Draft projects" value={drafts} />
         </div>
 
-        <h2 className="mt-12 text-xl font-semibold">Recently created</h2>
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold">Recently created</h2>
+          {drafts > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete all ${drafts} draft project${drafts === 1 ? "" : "s"}? Deployed collections are kept. This cannot be undone.`,
+                  )
+                ) {
+                  for (const p of projects) if (!p.deployment) actions.remove(p.id);
+                  toast.success("Draft projects deleted");
+                }
+              }}
+            >
+              <Trash2 /> Delete all drafts
+            </Button>
+          ) : null}
+        </div>
         {projects.length === 0 ? (
           <Card className="mt-4">
             <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
@@ -250,7 +271,12 @@ function Dashboard() {
               <Card key={p.id} className="overflow-hidden p-0">
                 <div className="relative">
                   {p.nfts[0] ? (
-                    <NftCanvas project={p} traits={p.nfts[0].traits} className="rounded-none" />
+                    <NftCanvas
+                      project={p}
+                      traits={p.nfts[0].traits}
+                      tokenId={p.nfts[0].tokenId}
+                      className="rounded-none"
+                    />
                   ) : p.logo ? (
                     <img src={p.logo} alt={p.name} className="aspect-square w-full object-cover" />
                   ) : (
@@ -266,7 +292,7 @@ function Dashboard() {
                       ? p.minted > 0
                         ? "Minting"
                         : "Deployed"
-                      : `Step ${p.step + 1}: ${STEPS[p.step]}`}
+                      : `Step ${p.step + 1}: ${stepsFor(p)[p.step]}`}
                   </Badge>
                 </div>
                 <CardHeader className="pb-2">
@@ -297,6 +323,23 @@ function Dashboard() {
                       <Link to="/studio/$id" params={{ id: p.id }}>
                         Open studio
                       </Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Delete ${p.name}`}
+                      title="Delete project"
+                      onClick={() => {
+                        const msg = p.deployment
+                          ? `Remove "${p.name}" from this browser? The deployed contract stays on-chain, but you will lose this project's studio data.`
+                          : `Delete "${p.name}"? This cannot be undone.`;
+                        if (window.confirm(msg)) {
+                          actions.remove(p.id);
+                          toast.success("Project deleted");
+                        }
+                      }}
+                    >
+                      <Trash2 />
                     </Button>
                     {p.deployment ? (
                       <Button asChild size="sm" variant="secondary">

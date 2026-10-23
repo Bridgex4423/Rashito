@@ -18,6 +18,7 @@ import {
   Plus,
   Rocket,
   Shuffle,
+  Sparkles,
   Trash2,
   Unlock,
   UploadCloud,
@@ -35,8 +36,9 @@ import {
   useWriteContract,
 } from "wagmi";
 import { parseEther, formatEther, type Address } from "viem";
-import { getPinataStatus, pinDirectory } from "@/lib/pinata.functions";
+import { getPinataStatus, getUploadUrl, pinDirectory } from "@/lib/pinata.functions";
 import { renderNft } from "@/lib/render-nft";
+import { parseAttributeSheet, type CsvRow } from "@/lib/import-csv";
 import { SiteHeader, ConnectWallet } from "@/components/site-header";
 import { NftCanvas } from "@/components/nft-canvas";
 import { Badge } from "@/components/ui/badge";
@@ -63,12 +65,13 @@ import {
   shortAddress,
   useAppState,
   useMounted,
+  useStoreReady,
   uid,
 } from "@/lib/store";
 import {
   CHAINS,
   RARITY_TIERS,
-  STEPS,
+  stepsFor,
   type ChainId,
   type Layer,
   type Nft,
@@ -182,6 +185,7 @@ function StepNav({
   step: number;
   go: (n: number) => void;
 }) {
+  const STEPS = stepsFor(project);
   return (
     <div className="flex gap-2 overflow-x-auto pb-2">
       {STEPS.map((s, i) => {
@@ -212,10 +216,11 @@ function StudioPage() {
   const { id } = Route.useParams();
   const { projects } = useAppState();
   const mounted = useMounted();
+  const storeReady = useStoreReady();
   const project = projects.find((p) => p.id === id);
   const [step, setStep] = useState(0);
 
-  if (!mounted)
+  if (!mounted || !storeReady)
     return (
       <div className="min-h-screen">
         <SiteHeader />
@@ -256,16 +261,36 @@ function StudioPage() {
         </div>
 
         <div className="mt-6">
-          {step === 0 && <DetailsStep project={project} update={update} next={() => advance(1)} />}
-          {step === 1 && <BaseStep project={project} update={update} next={() => advance(2)} />}
-          {step === 2 && <LayersStep project={project} update={update} next={() => advance(3)} />}
-          {step === 3 && <TraitsStep project={project} update={update} next={() => advance(4)} />}
-          {step === 4 && <RarityStep project={project} update={update} next={() => advance(5)} />}
-          {step === 5 && <GenerateStep project={project} update={update} next={() => advance(6)} />}
-          {step === 6 && <ReviewStep project={project} update={update} next={() => advance(7)} />}
-          {step === 7 && <UploadStep project={project} update={update} next={() => advance(8)} />}
-          {step === 8 && <DeployStep project={project} update={update} next={() => advance(9)} />}
-          {step === 9 && <MintStep project={project} update={update} />}
+          {(() => {
+            const name = stepsFor(project)[step];
+            const props = { project, update, next: () => advance(step + 1) };
+            switch (name) {
+              case "Details":
+                return <DetailsStep {...props} />;
+              case "Base":
+                return <BaseStep {...props} />;
+              case "Layers":
+                return <LayersStep {...props} />;
+              case "Traits":
+                return <TraitsStep {...props} />;
+              case "Rarity":
+                return <RarityStep {...props} />;
+              case "Generate":
+                return <GenerateStep {...props} />;
+              case "Review":
+                return <ReviewStep {...props} />;
+              case "Import":
+                return <ImportStep {...props} />;
+              case "Upload":
+                return <UploadStep {...props} />;
+              case "Deploy":
+                return <DeployStep {...props} />;
+              case "Mint":
+                return <MintStep project={project} update={update} />;
+              default:
+                return null;
+            }
+          })()}
         </div>
       </main>
     </div>
@@ -496,10 +521,97 @@ function BaseStep({ project, update, next }: StepProps) {
   );
 }
 
+/** Resizes to max 1000px and re-encodes as WebP (keeps transparency, keeps storage small). */
+async function compressImage(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1000 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  return c.toDataURL("image/webp", 0.88);
+}
+
+/**
+ * Builds layers + traits from a folder:  01_Background/Bamboo Dusk__14.png
+ * Folder = layer (numeric prefix sets stack order, bottom first).
+ * File = trait; optional "__N" suffix = rarity weight.
+ */
+async function layersFromFolder(files: File[]): Promise<Layer[]> {
+  const groups = new Map<string, File[]>();
+  for (const f of files) {
+    if (!/\.(png|webp|jpe?g)$/i.test(f.name)) continue;
+    const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+    const parts = rel.split("/");
+    if (parts.length < 2) continue;
+    const folder = parts[parts.length - 2]!;
+    groups.set(folder, [...(groups.get(folder) ?? []), f]);
+  }
+  // Ignore stray folders (previews, notes) when real numbered layer folders exist.
+  if ([...groups.keys()].some((k) => /^\d+[_\-\s]/.test(k))) {
+    for (const k of [...groups.keys()]) if (!/^\d+[_\-\s]/.test(k)) groups.delete(k);
+  }
+  const folders = [...groups.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+  const out: Layer[] = [];
+  for (const folder of folders) {
+    const layer = newLayer(
+      folder
+        .replace(/^\d+[_\-\s]*/, "")
+        .replace(/_/g, " ")
+        .trim() || folder,
+    );
+    const list = groups
+      .get(folder)!
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i]!;
+      const base = file.name.replace(/\.[^.]+$/, "");
+      const m = /^(.*?)__(\d+)$/.exec(base);
+      const trait = newTrait(i, (m ? m[1]! : base).trim());
+      trait.image = await compressImage(file);
+      if (m) trait.weight = Math.max(1, Number(m[2]));
+      layer.traits.push(trait);
+    }
+    out.push(layer);
+  }
+  return out;
+}
+
 /* ---------------- Step 3: Layers ---------------- */
 function LayersStep({ project, update, next }: StepProps) {
   const [name, setName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const packRef = useRef<HTMLInputElement>(null);
   const layers = project.layers;
+
+  const importPack = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    if (
+      layers.length > 0 &&
+      !window.confirm("This replaces your current layers and traits. Continue?")
+    )
+      return;
+    setImporting(true);
+    try {
+      const built = await layersFromFolder(Array.from(list));
+      if (built.length === 0) {
+        toast.error("No layer folders found. Expected folders like 01_Background/Trait.png");
+        return;
+      }
+      update({ layers: built, nfts: [] });
+      toast.success(
+        `Imported ${built.length} layers · ${built.reduce((n, l) => n + l.traits.length, 0)} traits`,
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const setLayers = (next: Layer[]) => update({ layers: next });
   const move = (i: number, dir: -1 | 1) => {
@@ -520,6 +632,35 @@ function LayersStep({ project, update, next }: StepProps) {
             <CardTitle className="text-base">Layer stack (top renders last)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-xl border border-dashed border-border bg-secondary/40 p-3">
+              <p className="text-xs text-muted-foreground">
+                Have a ready-made pack? Choose the folder that contains one sub-folder per layer
+                (like <code className="font-mono">01_Background</code>,{" "}
+                <code className="font-mono">02_Armor</code> …). Layers, traits and rarity weights
+                are created automatically.
+              </p>
+              <Button
+                className="mt-2"
+                variant="secondary"
+                size="sm"
+                disabled={importing}
+                onClick={() => packRef.current?.click()}
+              >
+                {importing ? <Loader2 className="animate-spin" /> : <UploadCloud />} Import layer
+                pack
+              </Button>
+              <input
+                ref={packRef}
+                type="file"
+                multiple
+                className="hidden"
+                {...({ webkitdirectory: "" } as Record<string, string>)}
+                onChange={(e) => {
+                  void importPack(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </div>
             <div className="flex gap-2">
               <Input
                 placeholder="New layer name"
@@ -1389,6 +1530,466 @@ function ReviewStep({ project, update, next }: StepProps) {
   );
 }
 
+/* ---------------- Import step (non-layered "AI variations" mode) ---------------- */
+const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/;
+const IMG_RE = /\.(png|jpe?g|webp)$/i;
+
+function extOf(name: string) {
+  const m = /\.(png|jpe?g|webp)$/i.exec(name);
+  const e = m ? m[1]!.toLowerCase() : "png";
+  return e === "jpeg" ? "jpg" : e;
+}
+
+function ImportStep({ project, update, next }: StepProps) {
+  const imp = project.imported;
+  const status = useQuery({
+    queryKey: ["pinata-status"],
+    queryFn: () => getPinataStatus(),
+    staleTime: 60_000,
+  });
+  const gateway = status.data?.gateway ?? imp?.gateway ?? "gateway.pinata.cloud";
+  const pinataReady = status.data?.configured === true;
+  const signUrl = useServerFn(getUploadUrl);
+
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [pattern, setPattern] = useState(imp?.namePattern ?? `${project.name} #{id}`);
+  const [attrs, setAttrs] = useState(imp?.baseAttributes ?? []);
+  const [sheet, setSheet] = useState<CsvRow[] | null>(null);
+  const [sheetName, setSheetName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [failed, setFailed] = useState(0);
+  const [advCid, setAdvCid] = useState("");
+  const [advCount, setAdvCount] = useState(project.size);
+  const [advExt, setAdvExt] = useState("png");
+  const filesRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+
+  const doneCount = project.nfts.filter((n) => n.imageCid).length;
+  const folderMode = !!imp?.imageCid;
+  const built =
+    project.nfts.length > 0 && !!imp && (folderMode || doneCount === project.nfts.length);
+  const canResume =
+    !folderMode &&
+    doneCount > 0 &&
+    doneCount < project.nfts.length &&
+    files.length === project.nfts.length;
+
+  const pick = (list: FileList | File[] | null) => {
+    if (!list) return;
+    const imgs = Array.from(list)
+      .filter((f) => IMG_RE.test(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    previews.forEach((u) => URL.revokeObjectURL(u));
+    setFiles(imgs);
+    setPreviews(imgs.slice(0, 12).map((f) => URL.createObjectURL(f)));
+    setFailed(0);
+    if (imgs.length === 0) toast.error("No PNG, JPG or WebP images found");
+  };
+
+  const onCsv = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      setSheet(parseAttributeSheet(await f.text()));
+      setSheetName(f.name);
+      toast.success("Attribute sheet loaded");
+    } catch (e) {
+      setSheet(null);
+      setSheetName("");
+      toast.error(e instanceof Error ? e.message : "Could not read CSV");
+    }
+  };
+
+  const makeNfts = (count: number, cids: (string | undefined)[]): Nft[] => {
+    const byId = new Map((sheet ?? []).map((r) => [r.tokenId, r]));
+    const base = attrs.filter((a) => a.trait_type.trim() && a.value.trim());
+    return Array.from({ length: count }, (_, i) => {
+      const id = i + 1;
+      const row = byId.get(id);
+      return {
+        tokenId: id,
+        name: row?.name || pattern.replaceAll("{id}", String(id)),
+        attributes: [...base, ...(row?.attributes ?? [])],
+        imageCid: cids[i],
+        traits: [],
+        locked: [],
+        rarityScore: 0,
+      };
+    });
+  };
+  const baseAttrs = () => attrs.filter((a) => a.trait_type.trim() && a.value.trim());
+
+  /** Uploads one image straight to Pinata through a short-lived signed URL. */
+  const uploadOne = async (file: File): Promise<string> => {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { url } = await signUrl({
+          data: { filename: file.name, mime: file.type || "image/png" },
+        });
+        const form = new FormData();
+        form.append("file", file);
+        form.append("network", "public");
+        const res = await fetch(url, { method: "POST", body: form });
+        if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+        const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
+        const cid = json.data?.cid ?? json.cid;
+        if (!cid) throw new Error("Pinata returned no CID");
+        return cid;
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("Upload failed");
+  };
+
+  const uploadAll = async () => {
+    if (!files.length) return;
+    if (files.length > 10000) {
+      toast.error("Maximum 10,000 images per collection");
+      return;
+    }
+    setBusy(true);
+    setFailed(0);
+    const cids: (string | undefined)[] = files.map((_, i) =>
+      canResume ? project.nfts[i]?.imageCid : undefined,
+    );
+    let nfts = makeNfts(files.length, cids);
+    update({
+      mode: "imported",
+      imported: {
+        imageCid: "",
+        ext: extOf(files[0]!.name),
+        gateway,
+        namePattern: pattern,
+        baseAttributes: baseAttrs(),
+      },
+      nfts,
+      size: files.length,
+      upload: undefined,
+    });
+    setProgress(cids.filter(Boolean).length);
+
+    const queue = files.map((_, i) => i).filter((i) => !cids[i]);
+    let finished = cids.filter(Boolean).length;
+    let bad = 0;
+    let sinceSave = 0;
+    const worker = async () => {
+      for (;;) {
+        const i = queue.shift();
+        if (i === undefined) return;
+        try {
+          cids[i] = await uploadOne(files[i]!);
+        } catch (e) {
+          console.error("upload failed", files[i]?.name, e);
+          bad++;
+          setFailed(bad);
+        }
+        finished++;
+        setProgress(finished);
+        if (++sinceSave >= 20) {
+          sinceSave = 0;
+          nfts = nfts.map((n, k) => ({ ...n, imageCid: cids[k] }));
+          update({ nfts });
+        }
+      }
+    };
+    try {
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      nfts = nfts.map((n, k) => ({ ...n, imageCid: cids[k] }));
+      update({ nfts });
+      if (bad) toast.error(`${bad} image(s) failed. Click Resume to retry them.`);
+      else toast.success(`${files.length} images uploaded to IPFS`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Advanced: images were already hosted as a folder elsewhere. */
+  const buildFromFolder = () => {
+    const clean = advCid
+      .trim()
+      .replace(/^ipfs:\/\//, "")
+      .replace(/\/+$/, "");
+    if (!CID_RE.test(clean)) {
+      toast.error("That doesn't look like a valid folder CID");
+      return;
+    }
+    if (!Number.isInteger(advCount) || advCount < 1 || advCount > 10000) {
+      toast.error("Supply must be between 1 and 10,000");
+      return;
+    }
+    update({
+      mode: "imported",
+      imported: {
+        imageCid: clean,
+        ext: advExt,
+        gateway,
+        namePattern: pattern,
+        baseAttributes: baseAttrs(),
+      },
+      nfts: makeNfts(advCount, []),
+      size: advCount,
+      upload: undefined,
+    });
+    toast.success(`${advCount} NFTs prepared`);
+  };
+
+  const pct = files.length ? Math.round((progress / files.length) * 100) : 0;
+
+  return (
+    <div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">1 · Add your images</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                pick(e.dataTransfer.files);
+              }}
+              className="grid place-items-center gap-3 rounded-xl border border-dashed border-border bg-secondary/40 p-8 text-center"
+            >
+              <ImagePlus className="size-8 text-muted-foreground" />
+              <p className="text-muted-foreground">
+                Drop all your AI-generated images here. Any file names work — they are numbered in
+                alphabetical order (1, 2, 3 …).
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="secondary" onClick={() => filesRef.current?.click()}>
+                  Choose images
+                </Button>
+                <Button variant="secondary" onClick={() => folderRef.current?.click()}>
+                  Choose a folder
+                </Button>
+              </div>
+              <input
+                ref={filesRef}
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => pick(e.target.files)}
+              />
+              <input
+                ref={folderRef}
+                type="file"
+                multiple
+                className="hidden"
+                {...({ webkitdirectory: "" } as Record<string, string>)}
+                onChange={(e) => pick(e.target.files)}
+              />
+            </div>
+            {files.length > 0 ? (
+              <div className="space-y-2 text-xs">
+                <p>
+                  <b>{files.length}</b> images selected ·{" "}
+                  {(files.reduce((n, f) => n + f.size, 0) / 1_000_000).toFixed(0)} MB
+                </p>
+                <div className="grid grid-cols-6 gap-1">
+                  {previews.map((u) => (
+                    <img key={u} src={u} alt="" className="aspect-square rounded object-cover" />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {!pinataReady && !status.isLoading ? (
+              <p className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+                Image hosting isn't connected yet. Add <code>PINATA_JWT</code> to the project's
+                environment settings to enable one-click uploads.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">2 · Name your NFTs</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="imp-pattern">Name pattern</Label>
+              <Input
+                id="imp-pattern"
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                <code className="font-mono">{"{id}"}</code> becomes the token number.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Attributes on every NFT (optional)</Label>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setAttrs([...attrs, { trait_type: "", value: "" }])}
+                >
+                  <Plus /> Add
+                </Button>
+              </div>
+              {attrs.map((a, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    placeholder="Collection"
+                    value={a.trait_type}
+                    onChange={(e) =>
+                      setAttrs(
+                        attrs.map((x, j) => (j === i ? { ...x, trait_type: e.target.value } : x)),
+                      )
+                    }
+                  />
+                  <Input
+                    placeholder="Genesis"
+                    value={a.value}
+                    onChange={(e) =>
+                      setAttrs(attrs.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))
+                    }
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setAttrs(attrs.filter((_, j) => j !== i))}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-2">
+              <Label>Per-token details (optional CSV)</Label>
+              <Button variant="secondary" onClick={() => csvRef.current?.click()}>
+                <UploadCloud /> {sheetName ? sheetName : "Upload attributes.csv"}
+              </Button>
+              <input
+                ref={csvRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => void onCsv(e.target.files?.[0])}
+              />
+              <p className="text-xs text-muted-foreground">
+                Columns: <code className="font-mono">token_id</code>, optional{" "}
+                <code className="font-mono">name</code>, then any attribute columns.
+              </p>
+            </div>
+            {busy ? (
+              <div className="space-y-2">
+                <Progress value={pct} />
+                <p className="font-mono text-xs text-muted-foreground">
+                  Uploading to IPFS {progress}/{files.length}
+                  {failed ? ` · ${failed} failed` : ""}
+                </p>
+              </div>
+            ) : (
+              <Button
+                className="w-full"
+                disabled={!files.length || !pinataReady}
+                onClick={() => void uploadAll()}
+              >
+                <UploadCloud />{" "}
+                {canResume
+                  ? `Resume upload (${doneCount}/${files.length} done)`
+                  : files.length
+                    ? `Upload ${files.length} images & build collection`
+                    : "Add images first"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <details className="mt-6 rounded-xl border border-border p-4 text-sm">
+        <summary className="cursor-pointer font-medium">
+          Advanced: my images are already hosted as an IPFS folder
+        </summary>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-2 sm:col-span-3">
+            <Label htmlFor="adv-cid">Folder CID (files named 1.png, 2.png …)</Label>
+            <Input
+              id="adv-cid"
+              value={advCid}
+              onChange={(e) => setAdvCid(e.target.value)}
+              placeholder="bafybei… or Qm…"
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>Supply</Label>
+            <Input
+              type="number"
+              value={advCount}
+              onChange={(e) => setAdvCount(Number(e.target.value))}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>Format</Label>
+            <Select value={advExt} onValueChange={setAdvExt}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="png">.png</SelectItem>
+                <SelectItem value="jpg">.jpg</SelectItem>
+                <SelectItem value="webp">.webp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button variant="secondary" className="w-full" onClick={buildFromFolder}>
+              Use this folder
+            </Button>
+          </div>
+        </div>
+      </details>
+
+      {project.nfts.length > 0 && imp ? (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Preview · {project.nfts.length} NFTs
+              {!folderMode ? ` · ${doneCount} on IPFS` : ""}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              {project.nfts.slice(0, 12).map((n) => (
+                <div key={n.tokenId} className="space-y-1">
+                  <NftCanvas project={project} traits={[]} tokenId={n.tokenId} />
+                  <div className="truncate text-xs">{n.name}</div>
+                </div>
+              ))}
+            </div>
+            <pre className="mt-4 max-h-52 overflow-auto rounded-lg bg-secondary/50 p-3 font-mono text-[10px]">
+              {JSON.stringify(buildMetadata(project, project.nfts[0]!), null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <NextBar
+        label="Continue to metadata upload"
+        hint={
+          built
+            ? `${project.nfts.length} NFTs ready`
+            : project.nfts.length
+              ? "Finish uploading all images"
+              : "Add and upload your images"
+        }
+        disabled={!built || busy}
+        onClick={next}
+      />
+    </div>
+  );
+}
+
 /* ---------------- Step 8: IPFS upload ---------------- */
 function UploadStep({ project, update, next }: StepProps) {
   const [progress, setProgress] = useState(0);
@@ -1416,7 +2017,8 @@ function UploadStep({ project, update, next }: StepProps) {
       setProgress(Math.min(100, v));
       if (v >= 100) {
         window.clearInterval(timer);
-        const imageCid = fakeCid(project.id + "images");
+        const imageCid =
+          project.imported?.imageCid || project.nfts[0]?.imageCid || fakeCid(project.id + "images");
         const metadataCid = fakeCid(project.id + "meta");
         update({
           upload: {
@@ -1425,12 +2027,72 @@ function UploadStep({ project, update, next }: StepProps) {
             baseUri: `ipfs://${metadataCid}/`,
             uploadedAt: new Date().toISOString(),
           },
-          step: Math.max(project.step, 8),
+          step: Math.max(project.step, imported ? 3 : 8),
         });
         setBusy(false);
         toast.success("Assets pinned (simulated)");
       }
     }, 70);
+  };
+
+  const imported = project.mode === "imported" && project.imported;
+
+  /** Imported collections: images are already on IPFS, only metadata is pinned. */
+  const runImported = async () => {
+    if (!project.imported) return;
+    setBusy(true);
+    setProgress(0);
+    try {
+      const imageCid = project.imported.imageCid || project.nfts[0]?.imageCid || "";
+      const withImages = {
+        ...project,
+        upload: { imageCid, metadataCid: "", baseUri: "", uploadedAt: "" },
+      };
+      const toB64 = (o: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(o, null, 2))));
+      const metaFiles = project.nfts.map((nft) => ({
+        path: `${nft.tokenId}.json`,
+        base64: toB64(buildMetadata(withImages, nft)),
+        type: "application/json",
+      }));
+      metaFiles.push({
+        path: "unrevealed.json",
+        base64: toB64({
+          name: `${project.name} (Unrevealed)`,
+          description: "This collection has not been revealed yet. Check back after reveal.",
+          image: project.nfts[0]?.imageCid
+            ? `ipfs://${project.nfts[0].imageCid}`
+            : `ipfs://${imageCid}/1.${project.imported.ext}`,
+        }),
+        type: "application/json",
+      });
+      const bytes = metaFiles.reduce((n, f) => n + f.base64.length, 0);
+      if (bytes > 4_000_000)
+        throw new Error(
+          "Metadata is too large for one upload (limit ~4 MB). Split into fewer attributes.",
+        );
+      setStage("Pinning metadata…");
+      setProgress(40);
+      const metaRes = await pin({
+        data: { name: `${project.symbol || project.name}-metadata`, files: metaFiles },
+      });
+      setProgress(100);
+      update({
+        upload: {
+          imageCid,
+          metadataCid: metaRes.cid,
+          baseUri: `ipfs://${metaRes.cid}/`,
+          uploadedAt: new Date().toISOString(),
+        },
+        step: Math.max(project.step, 3),
+      });
+      toast.success("Metadata pinned to IPFS via Pinata");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+      setStage("");
+    }
   };
 
   const runLive = async () => {
@@ -1512,7 +2174,8 @@ function UploadStep({ project, update, next }: StepProps) {
   };
 
   const run = () => {
-    if (live) void runLive();
+    if (imported && live) void runImported();
+    else if (live) void runLive();
     else runSimulated();
   };
 
@@ -1537,7 +2200,12 @@ function UploadStep({ project, update, next }: StepProps) {
               </Select>
             </div>
             <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>· {project.nfts.length} NFT images</li>
+              <li>
+                ·{" "}
+                {imported
+                  ? `${project.nfts.length} images already on IPFS`
+                  : `${project.nfts.length} NFT images`}
+              </li>
               <li>· {project.nfts.length} metadata files</li>
               <li>· Collection logo {project.logo ? "✓" : "—"}</li>
               <li>· Collection banner {project.banner ? "✓" : "—"}</li>

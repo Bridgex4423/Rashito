@@ -20,7 +20,7 @@ whichever collection you designate as Rashito's official one.
 
 The platform's fixed-supply ERC-20 utility token.
 
-- 1,000,000,000 RASH minted once, at deployment, to a treasury address you choose
+- 3,000,000 RASH minted once, at deployment, to a treasury address you choose
 - No mint function exists beyond the constructor - supply can never increase
 - Burnable (`ERC20Burnable`) and supports gasless approvals (`ERC20Permit` / EIP-2612)
 - Owner-only rescue function for foreign ERC-20s accidentally sent to the contract

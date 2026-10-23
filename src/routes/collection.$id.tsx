@@ -8,7 +8,7 @@ import { NftCanvas } from "@/components/nft-canvas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { shortAddress, useAppState, useMounted } from "@/lib/store";
+import { shortAddress, useAppState, useMounted, useStoreReady } from "@/lib/store";
 import { CHAINS } from "@/lib/types";
 import { RASHITO_COLLECTION_ABI } from "@/lib/web3/contract-artifact";
 import { resolveChain } from "@/lib/web3/contract";
@@ -52,6 +52,7 @@ function CollectionPage() {
   const { id } = Route.useParams();
   const { projects } = useAppState();
   const mounted = useMounted();
+  const storeReady = useStoreReady();
   const p = projects.find((x) => x.id === id);
   const { address } = useAccount();
   const targetChain = resolveChain(p?.chain ?? "base");
@@ -74,7 +75,7 @@ function CollectionPage() {
     query: { enabled: !!contractAddress },
   });
 
-  if (!mounted)
+  if (!mounted || !storeReady)
     return (
       <div className="min-h-screen">
         <SiteHeader />
@@ -127,7 +128,7 @@ function CollectionPage() {
         <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
           <div className="space-y-4">
             {p.nfts[0] ? (
-              <NftCanvas project={p} traits={p.nfts[0].traits} />
+              <NftCanvas project={p} traits={p.nfts[0].traits} tokenId={p.nfts[0].tokenId} />
             ) : (
               <div className="aspect-square rounded-xl checker" />
             )}
@@ -216,7 +217,7 @@ function CollectionPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {p.nfts.slice(0, 12).map((n) => (
                   <div key={n.tokenId} className="space-y-1">
-                    <NftCanvas project={p} traits={n.traits} />
+                    <NftCanvas project={p} traits={n.traits} tokenId={n.tokenId} />
                     <div className="text-xs text-muted-foreground">#{n.tokenId}</div>
                   </div>
                 ))}

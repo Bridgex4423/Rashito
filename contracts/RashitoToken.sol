@@ -14,8 +14,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 ///         Burnable so the treasury (or anyone) can permanently reduce supply,
 ///         and ERC20Permit for gasless approvals (EIP-2612).
 contract RashitoToken is ERC20, ERC20Burnable, ERC20Permit, Ownable {
-    /// @notice Total supply minted at deployment: 1,000,000,000 RASH (18 decimals).
-    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 ether;
+    /// @notice Total supply minted at deployment: 3,000,000 RASH (18 decimals).
+    uint256 public constant INITIAL_SUPPLY = 3_000_000 ether;
 
     constructor(address treasury, address owner_) ERC20("Rashito", "RASH") ERC20Permit("Rashito") Ownable(owner_) {
         require(treasury != address(0), "treasury is zero address");

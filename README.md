@@ -3,7 +3,7 @@
 Rashito is a no-code NFT collection studio: build layers and traits, set
 weighted rarity, generate art, pin it to IPFS, then deploy a real ERC-721
 contract and mint - all signed by your own wallet. It also ships the **RASH**
-utility token (1,000,000,000 fixed supply) and public Tokenomics and
+utility token (3,000,000 fixed supply) and public Tokenomics and
 Whitepaper pages.
 
 - **Frontend**: TanStack Start, React 19, TypeScript, Tailwind CSS

@@ -57,7 +57,12 @@ function Explore() {
               <Link key={p.id} to="/collection/$id" params={{ id: p.id }}>
                 <Card className="overflow-hidden p-0 transition-transform hover:-translate-y-1">
                   {p.nfts[0] ? (
-                    <NftCanvas project={p} traits={p.nfts[0].traits} className="rounded-none" />
+                    <NftCanvas
+                      project={p}
+                      traits={p.nfts[0].traits}
+                      tokenId={p.nfts[0].tokenId}
+                      className="rounded-none"
+                    />
                   ) : (
                     <div className="aspect-square checker" />
                   )}

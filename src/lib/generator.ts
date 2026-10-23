@@ -106,6 +106,18 @@ export function generateCollection(p: Project, size: number): GenerateResult {
 }
 
 export function buildMetadata(p: Project, nft: Nft) {
+  if (p.mode === "imported" && p.imported) {
+    return {
+      name: nft.name,
+      description: p.description,
+      image: nft.imageCid
+        ? `ipfs://${nft.imageCid}`
+        : `ipfs://${p.imported.imageCid}/${nft.tokenId}.${p.imported.ext}`,
+      external_url: p.website || undefined,
+      tokenId: nft.tokenId,
+      attributes: nft.attributes ?? [],
+    };
+  }
   const imageBase = p.upload?.imageCid ? `ipfs://${p.upload.imageCid}/` : "ipfs://<pending>/";
   return {
     name: nft.name,

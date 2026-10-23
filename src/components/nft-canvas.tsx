@@ -6,9 +6,32 @@ interface Props {
   traits: Nft["traits"];
   className?: string;
   showLabels?: boolean;
+  tokenId?: number;
 }
 
-export function NftCanvas({ project, traits, className, showLabels }: Props) {
+export function NftCanvas({ project, traits, className, showLabels, tokenId }: Props) {
+  if (project.mode === "imported" && project.imported) {
+    const id = tokenId ?? 1;
+    const own = project.nfts.find((n) => n.tokenId === id)?.imageCid;
+    const src = own
+      ? `https://${project.imported.gateway}/ipfs/${own}`
+      : `https://${project.imported.gateway}/ipfs/${project.imported.imageCid}/${id}.${project.imported.ext}`;
+    return (
+      <div
+        className={cn(
+          "relative aspect-square w-full overflow-hidden rounded-xl checker",
+          className,
+        )}
+      >
+        <img
+          src={src}
+          alt={`Token ${tokenId ?? 1}`}
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      </div>
+    );
+  }
   const ordered = project.layers
     .map((l) => {
       const sel = traits.find((t) => t.layerId === l.id);

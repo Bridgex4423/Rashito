@@ -67,7 +67,7 @@ body(
     "Rashito is a full-stack platform for creating, deploying, and minting generative NFT collections directly "
     "from a connected wallet, without writing code or hiring a smart-contract engineer. Every deployment and "
     "mint is a real, wallet-signed on-chain transaction; Rashito never holds a private key or custodial funds. "
-    "Alongside the Studio, Rashito maintains RASH, a fixed-supply utility token (1,000,000,000 total "
+    "Alongside the Studio, Rashito maintains RASH, a fixed-supply utility token (3,000,000 total "
     "supply) that anchors the ecosystem's tokenomics."
 )
 
@@ -114,7 +114,7 @@ body(
     "mint switch, a pre-reveal placeholder URI with owner-triggered reveal, and a secure owner withdraw function."
 )
 body(
-    "<b>RashitoToken.sol</b> - a fixed-supply ERC-20 (OpenZeppelin 5.x) that mints its entire 1,000,000,000 RASH "
+    "<b>RashitoToken.sol</b> - a fixed-supply ERC-20 (OpenZeppelin 5.x) that mints its entire 3,000,000 RASH "
     "supply once, at deployment, to a treasury address. There is no further mint function of any kind - RASH "
     "holders never face dilution from this contract. The token is burnable and supports gasless approvals "
     "(EIP-2612 permit)."
@@ -125,7 +125,7 @@ body(
 h1("4. The RASH Token")
 h2("4.1 Fixed supply")
 body(
-    "RASH has a hard-capped total supply of 1,000,000,000 tokens, minted once at contract deployment. This "
+    "RASH has a hard-capped total supply of 3,000,000 tokens, minted once at contract deployment. This "
     "figure can never increase - the contract has no mint function beyond the constructor."
 )
 h2("4.2 Utility")
@@ -148,7 +148,7 @@ body("Full breakdowns, allocation charts, and vesting notes live on the in-app T
 
 t1 = Table(
     [
-        ["RASH Token — 1,000,000,000 supply", ""],
+        ["RASH Token — 3,000,000 supply", ""],
         ["Public / Liquidity", "30%"],
         ["Team & Advisors (vested)", "20%"],
         ["Ecosystem & Staking Rewards", "20%"],

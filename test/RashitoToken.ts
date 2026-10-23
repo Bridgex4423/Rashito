@@ -18,7 +18,7 @@ describe("RashitoToken", async () => {
   it("mints the full fixed supply to the treasury at deployment", async () => {
     const { token, treasury } = await deployFixture();
     const supply = await token.read.totalSupply();
-    assert.equal(supply, parseEther("1000000000"));
+    assert.equal(supply, parseEther("3000000"));
     assert.equal(await token.read.balanceOf([treasury.account.address]), supply);
   });
 
@@ -44,7 +44,7 @@ describe("RashitoToken", async () => {
     });
     await otherToken.write.burn([parseEther("400")]);
     assert.equal(await token.read.balanceOf([other.account.address]), parseEther("600"));
-    assert.equal(await token.read.totalSupply(), parseEther("1000000000") - parseEther("400"));
+    assert.equal(await token.read.totalSupply(), parseEther("3000000") - parseEther("400"));
   });
 
   it("rejects deployment with a zero-address treasury", async () => {
