@@ -122,7 +122,7 @@ export function buildMetadata(p: Project, nft: Nft) {
   return {
     name: nft.name,
     description: p.description,
-    image: `${imageBase}${nft.tokenId}.png`,
+    image: nft.imageCid ? `ipfs://${nft.imageCid}` : `${imageBase}${nft.tokenId}.png`,
     external_url: p.website || undefined,
     tokenId: nft.tokenId,
     attributes: nft.traits.map((t) => {

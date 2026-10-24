@@ -2004,6 +2004,7 @@ function UploadStep({ project, update, next }: StepProps) {
     staleTime: 60_000,
   });
   const pin = useServerFn(pinDirectory);
+  const signUrl = useServerFn(getUploadUrl);
   const live = provider === "pinata" && status.data?.configured === true;
   const gateway = status.data?.gateway ?? "gateway.pinata.cloud";
 
@@ -2099,64 +2100,106 @@ function UploadStep({ project, update, next }: StepProps) {
     setBusy(true);
     setProgress(0);
     try {
-      setStage("Rendering artwork…");
-      const images: { path: string; base64: string; type: string }[] = [];
-      for (let i = 0; i < project.nfts.length; i++) {
+      // 1) Render each NFT and upload it straight to Pinata (signed URL), a few at
+      //    a time. Finished CIDs are saved so a failed run can simply be resumed.
+      const total = project.nfts.length;
+      const cids: (string | undefined)[] = project.nfts.map((n) => n.imageCid);
+      let finished = cids.filter(Boolean).length;
+      let sinceSave = 0;
+      let failedCount = 0;
+      setStage(`Uploading images 0/${total}…`);
+      setProgress(Math.round((finished / total) * 80));
+
+      const uploadImage = async (i: number): Promise<string> => {
         const nft = project.nfts[i]!;
         const dataUrl = await renderNft(project, nft);
-        images.push({ path: `${nft.tokenId}.png`, base64: dataUrl, type: "image/png" });
-        setProgress(Math.round(((i + 1) / project.nfts.length) * 45));
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], `${nft.tokenId}.png`, { type: "image/png" });
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const { url } = await signUrl({ data: { filename: file.name, mime: "image/png" } });
+            const form = new FormData();
+            form.append("file", file);
+            form.append("network", "public");
+            const res = await fetch(url, { method: "POST", body: form });
+            if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+            const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
+            const cid = json.data?.cid ?? json.cid;
+            if (!cid) throw new Error("Pinata returned no CID");
+            return cid;
+          } catch (e) {
+            lastErr = e;
+            await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+          }
+        }
+        throw lastErr instanceof Error ? lastErr : new Error("Upload failed");
+      };
+
+      const queue = cids.map((c, i) => (c ? -1 : i)).filter((i) => i >= 0);
+      const worker = async () => {
+        for (;;) {
+          const i = queue.shift();
+          if (i === undefined) return;
+          try {
+            cids[i] = await uploadImage(i);
+          } catch (e) {
+            console.error("image upload failed", i + 1, e);
+            failedCount++;
+          }
+          finished++;
+          setStage(`Uploading images ${Math.min(finished, total)}/${total}…`);
+          setProgress(Math.round((Math.min(finished, total) / total) * 80));
+          if (++sinceSave >= 20) {
+            sinceSave = 0;
+            update({ nfts: project.nfts.map((n, k) => ({ ...n, imageCid: cids[k] })) });
+          }
+        }
+      };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      const nftsWithCids = project.nfts.map((n, k) => ({ ...n, imageCid: cids[k] }));
+      update({ nfts: nftsWithCids });
+      if (failedCount > 0 || cids.some((c) => !c)) {
+        throw new Error(
+          `${cids.filter((c) => !c).length} image(s) failed to upload. Click the button again to resume - finished images are kept.`,
+        );
       }
 
-      setStage("Pinning images to IPFS…");
-      const imageRes = await pin({
-        data: { name: `${project.symbol || project.name}-images`, files: images },
-      });
-      setProgress(70);
-
+      // 2) Metadata: one small JSON per token, pinned together as a folder.
       setStage("Pinning metadata…");
+      setProgress(88);
       const withImages = {
         ...project,
-        upload: { imageCid: imageRes.cid, metadataCid: "", baseUri: "", uploadedAt: "" },
+        nfts: nftsWithCids,
+        upload: { imageCid: "", metadataCid: "", baseUri: "", uploadedAt: "" },
       };
-      const metaFiles = project.nfts.map((nft) => ({
+      const toB64 = (o: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(o, null, 2))));
+      const metaFiles = nftsWithCids.map((nft) => ({
         path: `${nft.tokenId}.json`,
-        base64: btoa(
-          unescape(encodeURIComponent(JSON.stringify(buildMetadata(withImages, nft), null, 2))),
-        ),
+        base64: toB64(buildMetadata(withImages, nft)),
         type: "application/json",
       }));
-      // A real, resolvable placeholder shown by tokenURI() before the owner calls
-      // reveal() on-chain - so pre-reveal minting works with genuine metadata too.
+      // Placeholder shown by tokenURI() before reveal() - uses a real uploaded image.
       metaFiles.push({
         path: "unrevealed.json",
-        base64: btoa(
-          unescape(
-            encodeURIComponent(
-              JSON.stringify(
-                {
-                  name: `${project.name} (Unrevealed)`,
-                  description:
-                    "This collection has not been revealed yet. Check back after reveal.",
-                  image:
-                    "ipfs://bafkreiek3gzc6qgz3jzq2f2lgt7v5w4h5v4x4kkq5v3f3wq4o6xvqz3z3u/placeholder.png",
-                },
-                null,
-                2,
-              ),
-            ),
-          ),
-        ),
+        base64: toB64({
+          name: `${project.name} (Unrevealed)`,
+          description: "This collection has not been revealed yet. Check back after reveal.",
+          image: `ipfs://${cids[0]}`,
+        }),
         type: "application/json",
       });
+      const bytes = metaFiles.reduce((n, f) => n + f.base64.length, 0);
+      if (bytes > 4_000_000) throw new Error("Metadata is too large for one upload (limit ~4 MB).");
       const metaRes = await pin({
         data: { name: `${project.symbol || project.name}-metadata`, files: metaFiles },
       });
 
       setProgress(100);
       update({
+        nfts: nftsWithCids,
         upload: {
-          imageCid: imageRes.cid,
+          imageCid: cids[0]!,
           metadataCid: metaRes.cid,
           baseUri: `ipfs://${metaRes.cid}/`,
           uploadedAt: new Date().toISOString(),
