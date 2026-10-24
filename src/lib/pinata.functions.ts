@@ -81,7 +81,7 @@ export const getUploadUrl = createServerFn({ method: "POST" })
       method: "POST",
       headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        network: "public",
+        date: Math.floor(Date.now() / 1000),
         expires: 300,
         filename: data.filename.slice(0, 120),
         allow_mime_types: ["image/*"],
@@ -91,9 +91,7 @@ export const getUploadUrl = createServerFn({ method: "POST" })
     const text = await res.text();
     if (!res.ok) {
       console.error("Pinata sign failed", res.status, text);
-      throw new Error(
-        `Could not start upload (Pinata ${res.status}). Check the Pinata key permissions.`,
-      );
+      throw new Error(`Could not start upload (Pinata ${res.status}): ${text.slice(0, 200)}`);
     }
     const json = JSON.parse(text) as { data?: string };
     if (!json.data) throw new Error("Pinata did not return an upload URL");
