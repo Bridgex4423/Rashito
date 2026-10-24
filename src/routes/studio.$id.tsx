@@ -2535,6 +2535,7 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
 
   const [qty, setQty] = useState(1);
   const [reserveQty, setReserveQty] = useState(1);
+  const [batchSize, setBatchSize] = useState(100);
   const [busy, setBusy] = useState<string | null>(null);
   const d = project.deployment;
   const contractAddress = d?.address as Address | undefined;
@@ -2568,6 +2569,14 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
     chainId: targetChain.id,
     query: { enabled: !!contractAddress },
   });
+  const { data: isRevealed, refetch: refetchRevealed } = useReadContract({
+    address: contractAddress,
+    abi: RASHITO_COLLECTION_ABI,
+    functionName: "revealed",
+    chainId: targetChain.id,
+    query: { enabled: !!contractAddress },
+  });
+  const baseUri = project.upload?.baseUri ?? "";
 
   const total = project.size;
   const minted = totalSupply !== undefined ? Number(totalSupply) : project.minted;
@@ -2664,6 +2673,83 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
     }
   };
 
+  const revealNow = async () => {
+    if (!contractAddress || !baseUri) {
+      toast.error("Upload the collection first so there is metadata to reveal");
+      return;
+    }
+    if (!isConnected || !isOwner) {
+      toast.error("Connect the contract owner wallet to reveal");
+      return;
+    }
+    try {
+      await ensureRightNetwork();
+      setBusy("Confirm the reveal in your wallet…");
+      const hash = await writeContractAsync({
+        address: contractAddress,
+        abi: RASHITO_COLLECTION_ABI,
+        functionName: "reveal",
+        args: [baseUri],
+        chainId: targetChain.id,
+      });
+      setBusy("Waiting for confirmation…");
+      await publicClient!.waitForTransactionReceipt({ hash });
+      await refetchRevealed();
+      toast.success("Revealed: every token now shows its real artwork and traits");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Reveal failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Mints every remaining token to the owner wallet in several smaller transactions. */
+  const reserveAll = async () => {
+    if (!d || !contractAddress || !address) {
+      toast.error("Deploy the contract and connect your wallet first");
+      return;
+    }
+    if (!isOwner) {
+      toast.error("Only the contract owner can use reserve mint");
+      return;
+    }
+    const size = Math.max(1, Math.min(200, Math.floor(batchSize) || 100));
+    let left = remaining;
+    if (left < 1) return;
+    const batches = Math.ceil(left / size);
+    try {
+      await ensureRightNetwork();
+      let n = 0;
+      while (left > 0) {
+        const q = Math.min(size, left);
+        n += 1;
+        setBusy(`Batch ${n} of ${batches} (${q} NFTs): confirm in your wallet…`);
+        const hash = await writeContractAsync({
+          address: contractAddress,
+          abi: RASHITO_COLLECTION_ABI,
+          functionName: "ownerMint",
+          args: [address, BigInt(q)],
+          chainId: targetChain.id,
+        });
+        setBusy(`Batch ${n} of ${batches}: waiting for confirmation…`);
+        await publicClient!.waitForTransactionReceipt({ hash });
+        left -= q;
+        const fresh = await refetchSupply();
+        update((p) => ({ minted: Number(fresh.data ?? p.minted + q) }));
+      }
+      toast.success("The whole collection is minted to your wallet");
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        (err instanceof Error ? err.message : "Reserve mint failed") +
+          " - batches already confirmed are kept. Press the button again to continue.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const togglePublicMint = async (enabled: boolean) => {
     if (!contractAddress) return;
     try {
@@ -2700,6 +2786,29 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
               </span>
             </div>
             <Progress value={(minted / Math.max(1, total)) * 100} />
+
+            {contractAddress && isRevealed === false ? (
+              <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+                <p className="font-medium text-amber-300">Not revealed yet</p>
+                <p className="text-muted-foreground">
+                  Until you reveal, every token shows the placeholder &quot;(Unrevealed)&quot; on
+                  OpenSea and in wallets. Reveal once, before you mint and list, so each NFT shows
+                  its real artwork and traits. Owner-only, one transaction.
+                </p>
+                {isOwner ? (
+                  <Button size="sm" onClick={revealNow} disabled={!!busy || !baseUri}>
+                    Reveal collection
+                  </Button>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Connect the contract owner wallet to reveal.
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {contractAddress && isRevealed === true ? (
+              <p className="text-xs text-success">Revealed: tokens show their real metadata.</p>
+            ) : null}
 
             <Tabs defaultValue="public">
               <TabsList className="w-full">
@@ -2790,6 +2899,29 @@ function MintStep({ project, update }: { project: Project; update: StepProps["up
                     <p className="text-xs text-muted-foreground">
                       Total: 0 {CHAINS.find((c) => c.id === project.chain)!.symbol} + gas only.
                     </p>
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Mint everything that is left ({remaining}) to your wallet in batches, so no
+                        single transaction is too big. Each batch is one wallet confirmation.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="batch" className="text-xs">
+                          Batch size
+                        </Label>
+                        <Input
+                          id="batch"
+                          className="w-24"
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={batchSize}
+                          onChange={(e) => setBatchSize(Math.max(1, Number(e.target.value)))}
+                        />
+                        <Button onClick={reserveAll} disabled={remaining <= 0}>
+                          <Gift /> Mint all {remaining} to my wallet
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </TabsContent>
